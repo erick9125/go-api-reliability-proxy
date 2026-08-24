@@ -1,0 +1,27 @@
+version: 1
+
+proxy:
+  listen: "127.0.0.1:8080"
+  target: "http://localhost:3000"
+
+rules:
+  - name: flaky-payments
+    match:
+      path: "/payments/*"
+    effects:
+      failure:
+        probability: 0.2
+        status: 503
+
+  - name: inventory-timeouts
+    match:
+      path: "/inventory/*"
+      methods:
+        - GET
+    effects:
+      latency:
+        min: 100ms
+        max: 1500ms
+      failure:
+        probability: 0.15
+        status: 503

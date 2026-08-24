@@ -1,0 +1,15 @@
+version: 1
+
+proxy:
+  listen: "127.0.0.1:8080"
+  target: "http://localhost:3000"
+
+rules:
+  - name: payments-latency
+    match:
+      path: "/payments/*"
+      methods:
+        - POST
+    effects:
+      latency:
+        fixed: 1200ms

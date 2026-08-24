@@ -1,0 +1,20 @@
+version: 1
+
+proxy:
+  listen: "127.0.0.1:8080"
+  target: "http://localhost:3000"
+
+rules:
+  - name: rate-limit-users
+    match:
+      path: "/users/*"
+      methods:
+        - GET
+    effects:
+      response:
+        status: 429
+        headers:
+          Retry-After: "10"
+          Content-Type: "application/json"
+        body: |
+          {"error":"rate limited"}

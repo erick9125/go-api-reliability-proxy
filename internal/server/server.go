@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"time"
 )
@@ -21,14 +20,14 @@ func Run(ctx context.Context, opts Options) error {
 		logger = slog.Default()
 	}
 
+	// ctx solo dispara el apagado: no puede ser el padre de los contextos de
+	// petición. Si lo fuera, la señal cancelaría de golpe todas las peticiones en
+	// vuelo y Shutdown no tendría nada que drenar.
 	srv := &http.Server{
 		Addr:              opts.Addr,
 		Handler:           opts.Handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
-		BaseContext: func(_ net.Listener) context.Context {
-			return ctx
-		},
 	}
 
 	errCh := make(chan error, 1)

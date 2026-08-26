@@ -108,7 +108,64 @@ func validateRule(rule rules.Rule, names map[string]struct{}) error {
 	if effects == 0 {
 		return ruleError(rule.Name, "at least one effect is required")
 	}
+	return validateEffectReachability(rule)
+}
+
+// validateEffectReachability rejects rules whose effects can never run. The
+// engine applies effects in a fixed order (latency, timeout, reset, failure,
+// response) and the first one that ends the request wins, so without this check
+// a rule is accepted, starts silently, and does something other than it says.
+//
+// Only effects that *always* end the request shadow the ones behind them:
+// latency never stops, and a probabilistic reset or failure leaves a reachable
+// path, so those combinations stay valid.
+func validateEffectReachability(rule rules.Rule) error {
+	afterReset := effectsAfterReset(rule)
+
+	shadowedByTimeout := afterReset
+	if rule.Effects.Reset != nil {
+		shadowedByTimeout = append([]string{"reset"}, afterReset...)
+	}
+	if rule.Effects.Timeout != nil && len(shadowedByTimeout) > 0 {
+		return ruleError(rule.Name, fmt.Sprintf(
+			"timeout always ends the request, so %s can never run; split them into separate rules",
+			joinEffects(shadowedByTimeout)))
+	}
+
+	if rule.Effects.Reset != nil && alwaysResets(rule.Effects.Reset) && len(afterReset) > 0 {
+		return ruleError(rule.Name, fmt.Sprintf(
+			"reset always ends the request, so %s can never run; set reset.probability below 1 or split them into separate rules",
+			joinEffects(afterReset)))
+	}
 	return nil
+}
+
+// effectsAfterReset lists the effects the engine evaluates once reset declined
+// to fire, in engine order.
+func effectsAfterReset(rule rules.Rule) []string {
+	var names []string
+	if rule.Effects.Failure != nil {
+		names = append(names, "failure")
+	}
+	if rule.Effects.Response != nil {
+		names = append(names, "response")
+	}
+	return names
+}
+
+func alwaysResets(cfg *rules.ResetConfig) bool {
+	return cfg.Probability == nil || *cfg.Probability >= 1
+}
+
+func joinEffects(names []string) string {
+	switch len(names) {
+	case 1:
+		return names[0]
+	case 2:
+		return names[0] + " and " + names[1]
+	default:
+		return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+	}
 }
 
 func validateLatency(name string, latency *rules.LatencyConfig) error {

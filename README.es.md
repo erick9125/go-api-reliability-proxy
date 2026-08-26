@@ -93,6 +93,8 @@ Las reglas se evalúan en orden de declaración. Se aplica la primera coincidenc
 
 Orden: latencia → timeout → reset → failure → response.
 
+Gana el primer efecto que corta la petición, así que una regla no puede declarar un efecto que nunca llegaría a ejecutarse. Las combinaciones donde un efecto tapa permanentemente a otro se rechazan al arrancar en vez de ignorarse en silencio: `timeout` junto a `reset`, `failure` o `response`, y un `reset` sin probabilidad (o con `probability: 1.0`) junto a `failure` o `response`. Siguen siendo válidas las combinaciones con un camino alcanzable: `latency` con cualquier cosa, `failure` + `response`, y un `reset` con probabilidad menor que 1.
+
 - **Latencia:** espera cancelable con `context.Context`, luego continúa hacia upstream salvo otro efecto de corte.
 - **Failure:** con probabilidad `p` responde un status sintético y no llama al backend.
 - **Response:** siempre responde de forma sintética si la regla coincidió (y failure no cortó antes).

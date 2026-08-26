@@ -1,7 +1,9 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -44,6 +46,10 @@ func decodeFile(path string) (Config, error) {
 	decoder := yaml.NewDecoder(file)
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&cfg); err != nil {
+		// An empty file surfaces as a bare EOF, which tells the user nothing.
+		if errors.Is(err, io.EOF) {
+			return Config{}, fmt.Errorf("parse configuration file: %s is empty", path)
+		}
 		return Config{}, fmt.Errorf("parse configuration file: %w", err)
 	}
 	return cfg, nil

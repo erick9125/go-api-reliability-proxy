@@ -155,7 +155,7 @@ func TestSyntheticResponseHeadersAndBody(t *testing.T) {
 		Effects: rules.Effects{
 			Response: &rules.ResponseConfig{
 				Status:  http.StatusTooManyRequests,
-				Headers: map[string]string{"Retry-After": "10", "Content-Type": "application/json"},
+				Headers: map[string]rules.HeaderValues{"Retry-After": {"10"}, "Content-Type": {"application/json"}},
 				Body:    `{"error":"rate limited"}`,
 			},
 		},

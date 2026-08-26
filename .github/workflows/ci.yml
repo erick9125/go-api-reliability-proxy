@@ -24,8 +24,14 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # -coverpkg spans every package, otherwise the integration tests in
+      # tests/integration credit nothing to the packages they exercise and
+      # internal/proxy reads as 0% despite being covered.
       - name: Test
-        run: go test ./...
+        run: go test -coverpkg=./... -coverprofile=coverage.out ./...
+
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -n 20
 
       - name: Race detector
         run: go test -race ./...

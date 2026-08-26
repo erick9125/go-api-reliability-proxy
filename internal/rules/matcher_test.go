@@ -48,14 +48,14 @@ func TestMatcherMethodsAndFirstMatch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.path, nil)
-			got := matcher.Match(req)
+			got, ok := matcher.Match(req)
 			if tt.wantNil {
-				if got != nil {
+				if ok {
 					t.Fatalf("expected no match, got %q", got.Name)
 				}
 				return
 			}
-			if got == nil {
+			if !ok {
 				t.Fatal("expected a match")
 			}
 			if got.Name != tt.expectedRule {
@@ -74,9 +74,59 @@ func TestMatcherNormalizesRequestMethod(t *testing.T) {
 		},
 	}})
 	req := httptest.NewRequest("get", "/health", nil)
-	got := matcher.Match(req)
-	if got == nil {
+	if _, ok := matcher.Match(req); !ok {
 		t.Fatal("expected method to match after uppercasing")
+	}
+}
+
+// The matcher must own its rules: mutating the caller's slice afterwards, or
+// the value it hands back, must not change what later requests match.
+func TestMatcherOwnsItsRules(t *testing.T) {
+	probability := 0.5
+	source := []Rule{{
+		Name:  "flaky",
+		Match: MatchConfig{Path: "/a", Methods: []string{"GET"}},
+		Effects: Effects{
+			Failure: &FailureConfig{
+				Probability: &probability,
+				Status:      503,
+				Headers:     map[string]HeaderValues{"X-Fault": {"yes"}},
+			},
+		},
+	}}
+	matcher := NewMatcher(source)
+
+	source[0].Name = "mutated"
+	source[0].Match.Methods[0] = "POST"
+	*source[0].Effects.Failure.Probability = 1
+	source[0].Effects.Failure.Status = 500
+	source[0].Effects.Failure.Headers["X-Fault"] = HeaderValues{"no"}
+
+	req := httptest.NewRequest(http.MethodGet, "/a", nil)
+	got, ok := matcher.Match(req)
+	if !ok {
+		t.Fatal("expected a match after the source slice was mutated")
+	}
+	if got.Name != "flaky" {
+		t.Errorf("name = %q, want the value captured at construction", got.Name)
+	}
+	if *got.Effects.Failure.Probability != 0.5 {
+		t.Errorf("probability = %v, want 0.5", *got.Effects.Failure.Probability)
+	}
+	if got.Effects.Failure.Status != 503 {
+		t.Errorf("status = %d, want 503", got.Effects.Failure.Status)
+	}
+	if v := got.Effects.Failure.Headers["X-Fault"][0]; v != "yes" {
+		t.Errorf("header = %q, want %q", v, "yes")
+	}
+
+	// Assigning to the returned value must not reach the matcher. Effects
+	// pointers are documented as shared and read-only, so they are not covered
+	// by this guarantee.
+	got.Name = "local edit"
+	again, _ := matcher.Match(req)
+	if again.Name != "flaky" {
+		t.Errorf("name = %q after editing a returned rule, want %q", again.Name, "flaky")
 	}
 }
 
@@ -97,7 +147,7 @@ func BenchmarkMatcher(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_ = matcher.Match(req)
+				_, _ = matcher.Match(req)
 			}
 		})
 	}

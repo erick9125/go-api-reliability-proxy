@@ -26,15 +26,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.metrics.RecordRequest()
-	rule := h.matcher.Match(r)
-	if rule == nil {
+	rule, matched := h.matcher.Match(r)
+	if !matched {
 		h.metrics.RecordProxied()
 		h.proxy.ServeHTTP(w, r)
 		return
 	}
 
 	h.metrics.RecordMatch()
-	result, err := h.engine.Apply(r.Context(), *rule, w, r)
+	result, err := h.engine.Apply(r.Context(), rule, w, r)
+	if result.Faulted {
+		h.metrics.RecordRequestFaulted()
+	}
 	if err != nil {
 		h.handleEngineError(w, r, err)
 		return
@@ -64,8 +67,10 @@ func (h *Handler) handleEngineError(w http.ResponseWriter, r *http.Request, err 
 }
 
 func (h *Handler) serveInternal(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	// HEAD is served by net/http from the GET handler, so both are allowed.
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
 	}
 	switch r.URL.Path {

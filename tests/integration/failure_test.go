@@ -69,6 +69,40 @@ func TestFailureProbabilityWithFixedRandom(t *testing.T) {
 	}
 }
 
+// A header configured with several values must arrive as several values, not
+// as one joined string.
+func TestSyntheticResponseSendsRepeatedHeaders(t *testing.T) {
+	upstream := newUpstream(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("upstream should not be called")
+	}))
+	p := newProxyServer(t, upstream.URL, []rules.Rule{{
+		Name:  "unauthorized",
+		Match: rules.MatchConfig{Path: "/private"},
+		Effects: rules.Effects{
+			Response: &rules.ResponseConfig{
+				Status: http.StatusUnauthorized,
+				Headers: map[string]rules.HeaderValues{
+					"Set-Cookie": {"session=; Max-Age=0", "csrf=; Max-Age=0"},
+				},
+			},
+		},
+	}}, proxy.Options{})
+
+	resp, err := http.Get(p.URL + "/private")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	got := resp.Header.Values("Set-Cookie")
+	if len(got) != 2 {
+		t.Fatalf("Set-Cookie = %#v, want 2 separate values", got)
+	}
+	if got[0] != "session=; Max-Age=0" || got[1] != "csrf=; Max-Age=0" {
+		t.Fatalf("Set-Cookie = %#v", got)
+	}
+}
+
 func TestRateLimitSimulation(t *testing.T) {
 	upstream := newUpstream(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("upstream should not be called")
@@ -82,7 +116,7 @@ func TestRateLimitSimulation(t *testing.T) {
 		Effects: rules.Effects{
 			Response: &rules.ResponseConfig{
 				Status:  http.StatusTooManyRequests,
-				Headers: map[string]string{"Retry-After": "10"},
+				Headers: map[string]rules.HeaderValues{"Retry-After": {"10"}},
 				Body:    `{"error":"rate limited"}`,
 			},
 		},

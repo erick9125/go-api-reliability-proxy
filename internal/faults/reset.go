@@ -11,23 +11,24 @@ import (
 
 var ErrHijackingUnsupported = errors.New("connection reset simulation requires HTTP/1.x hijacking")
 
-func (e *Engine) applyReset(rule rules.Rule, w http.ResponseWriter, r *http.Request) (bool, error) {
+// applyReset returns whether the request was handled and whether the reset was
+// actually delivered. The two differ when hijacking is unavailable: the request
+// stops, but no reset reached the client, so counting one would be a lie.
+func (e *Engine) applyReset(rule rules.Rule, w http.ResponseWriter, r *http.Request) (stop, faulted bool, err error) {
 	probability := 1.0
 	if rule.Effects.Reset.Probability != nil {
 		probability = *rule.Effects.Reset.Probability
 	}
 	if !e.shouldFail(probability) {
-		return false, nil
+		return false, false, nil
 	}
-	e.logFault(rule, r, "reset")
-	e.recordFault()
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
-		return true, ErrHijackingUnsupported
+		return true, false, ErrHijackingUnsupported
 	}
 	conn, _, err := hijacker.Hijack()
 	if err != nil {
-		return true, err
+		return true, false, err
 	}
 	// The hijack succeeded, so the connection is ours and the ResponseWriter is
 	// spent. Reporting a Close failure upwards would make the error handler try
@@ -42,7 +43,9 @@ func (e *Engine) applyReset(rule rules.Rule, w http.ResponseWriter, r *http.Requ
 			"path", r.URL.Path,
 		)
 	}
-	return true, nil
+	e.logFault(rule, r, "reset")
+	e.recordFault()
+	return true, true, nil
 }
 
 // forceReset makes the following Close send a TCP RST instead of a graceful

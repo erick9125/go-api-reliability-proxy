@@ -78,7 +78,7 @@ Ejemplos en `examples/`. Una configuración inválida impide el arranque.
 
 `--version` imprime `reliability-proxy v0.1.0`.
 
-`--seed` hace determinista la inyección probabilística.
+`--seed` repite las mismas decisiones probabilísticas con tráfico **secuencial**, que es lo que hace repetible una corrida guionada en CI. No puede hacer determinista el tráfico concurrente: las peticiones en paralelo toman valores del generador en el orden en que el scheduler les entrega el lock, así que la misma semilla asigna decisiones distintas a peticiones distintas. Si además se pasa una fuente aleatoria explícita por código, esta gana y el proxy registra un warning.
 
 ## Matching de reglas
 

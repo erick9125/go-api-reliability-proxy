@@ -200,7 +200,7 @@ Options:
 
 `--version` prints `reliability-proxy v0.1.0`.
 
-`--seed` makes probabilistic faults repeatable in CI.
+`--seed` replays the same probabilistic decisions for **sequential** traffic, which is what makes a scripted run repeatable in CI. It cannot make concurrent traffic deterministic: parallel requests draw from the generator in whatever order the scheduler hands them the lock, so the same seed with the same load assigns different decisions to different requests. Passing an explicit random source in code overrides the seed, and the proxy logs a warning when both are set.
 
 ## Rule Matching
 
@@ -278,7 +278,7 @@ response:
     {"error":"rate limited"}
 ```
 
-If you set `Content-Type`, it is preserved. The proxy does not guess content types.
+If you set `Content-Type`, it is preserved and sent as-is. If you omit it, the proxy does not add one — but `net/http` then sniffs the body and fills it in, so a JSON body without an explicit `Content-Type` goes out as `text/plain; charset=utf-8`. Set it explicitly whenever the body's type matters to the client under test.
 
 `failure` is probabilistic. `response` always fires when the rule matches (after latency, and after a failure that did not inject).
 
@@ -323,6 +323,20 @@ Full configuration is not exposed (it may contain operational details you do not
 - Logs do not include Authorization, Cookie, request bodies, or full query strings
 - Traffic is not recorded or persisted
 - Do not expose the proxy on untrusted networks
+
+## Upstream Limits
+
+The connection to the upstream uses fixed limits rather than Go's defaults, so a hung upstream cannot pin connections and goroutines indefinitely:
+
+| Limit | Value |
+| --- | --- |
+| Dial timeout | 10s |
+| TLS handshake timeout | 10s |
+| Response header timeout | 30s |
+| Idle connection timeout | 90s |
+| Idle connections per host | 100 |
+
+Injected latency runs *before* the request is forwarded, so it never counts against the response header timeout — only genuine upstream slowness does. An upstream that legitimately takes longer than 30s to send response headers will surface as `502`. These are not configurable in 0.1.
 
 ## Limitations
 

@@ -206,6 +206,102 @@ func TestTimeoutReturns504(t *testing.T) {
 	}
 }
 
+// --seed is advertised as making probabilistic faults repeatable. That holds
+// for sequential traffic: the same seed must replay the same decisions.
+func TestSeedMakesSequentialDecisionsRepeatable(t *testing.T) {
+	seed := int64(42)
+
+	decisions := func() []bool {
+		engine := New(Options{
+			Seed:    &seed,
+			Sleeper: &recordingSleeper{},
+			Metrics: metrics.New(),
+			Logger:  silentLogger(),
+		})
+		prob := 0.5
+		rule := rules.Rule{
+			Name: "flaky",
+			Effects: rules.Effects{
+				Failure: &rules.FailureConfig{
+					Probability: &prob,
+					Status:      http.StatusServiceUnavailable,
+				},
+			},
+		}
+		got := make([]bool, 0, 20)
+		for i := 0; i < 20; i++ {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/inventory/1", nil)
+			result, err := engine.Apply(req.Context(), rule, rec, req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got = append(got, result.Stop)
+		}
+		return got
+	}
+
+	first, second := decisions(), decisions()
+	for i := range first {
+		if first[i] != second[i] {
+			t.Fatalf("run diverged at request %d: %v vs %v", i, first, second)
+		}
+	}
+
+	// A run that never injects would pass the comparison above without proving
+	// anything about the seed.
+	injected := 0
+	for _, stop := range first {
+		if stop {
+			injected++
+		}
+	}
+	if injected == 0 || injected == len(first) {
+		t.Fatalf("expected a mix of injected and passed-through requests, got %d of %d", injected, len(first))
+	}
+}
+
+func TestDifferentSeedsProduceDifferentDecisions(t *testing.T) {
+	decisions := func(seed int64) []bool {
+		engine := New(Options{
+			Seed:    &seed,
+			Sleeper: &recordingSleeper{},
+			Metrics: metrics.New(),
+			Logger:  silentLogger(),
+		})
+		prob := 0.5
+		rule := rules.Rule{
+			Name: "flaky",
+			Effects: rules.Effects{
+				Failure: &rules.FailureConfig{
+					Probability: &prob,
+					Status:      http.StatusServiceUnavailable,
+				},
+			},
+		}
+		got := make([]bool, 0, 20)
+		for i := 0; i < 20; i++ {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/inventory/1", nil)
+			result, _ := engine.Apply(req.Context(), rule, rec, req)
+			got = append(got, result.Stop)
+		}
+		return got
+	}
+
+	a, b := decisions(1), decisions(2)
+	same := true
+	for i := range a {
+		if a[i] != b[i] {
+			same = false
+			break
+		}
+	}
+	if same {
+		t.Fatal("different seeds produced identical decisions")
+	}
+}
+
 type recordingSleeper struct {
 	delay time.Duration
 	calls int

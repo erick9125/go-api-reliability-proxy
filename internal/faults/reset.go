@@ -29,8 +29,20 @@ func (e *Engine) applyReset(rule rules.Rule, w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		return true, err
 	}
+	// The hijack succeeded, so the connection is ours and the ResponseWriter is
+	// spent. Reporting a Close failure upwards would make the error handler try
+	// to write a 500 onto a hijacked connection, which net/http rejects while
+	// logging noise. Nothing useful can reach the client at this point.
 	forceReset(conn)
-	return true, conn.Close()
+	if err := conn.Close(); err != nil {
+		e.logger.Warn("closing hijacked connection",
+			"error", err,
+			"rule", rule.Name,
+			"method", r.Method,
+			"path", r.URL.Path,
+		)
+	}
+	return true, nil
 }
 
 // forceReset makes the following Close send a TCP RST instead of a graceful

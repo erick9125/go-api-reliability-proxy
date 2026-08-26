@@ -27,12 +27,8 @@ rules:
       latency:
         fixed: 1200ms
 `)
-	cfg, err := config.Load(path)
+	cfg, err := config.Load(path, config.Overrides{})
 	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.Normalize()
-	if err := config.Validate(cfg); err != nil {
 		t.Fatal(err)
 	}
 	if cfg.Proxy.Target != "http://localhost:3000" {
@@ -390,6 +386,111 @@ rules:
 				t.Fatalf("expected a valid configuration, got %v", err)
 			}
 		})
+	}
+}
+
+// Load owns the whole pipeline, so callers cannot skip a step and end up with a
+// Config that looks fine but matches nothing.
+func TestLoadNormalizesAndValidates(t *testing.T) {
+	path := writeConfig(t, `
+proxy:
+  target: "http://localhost:3000"
+rules:
+  - name: users
+    match:
+      path: "  /users  "
+      methods:
+        - get
+    effects:
+      response:
+        status: 429
+`)
+	cfg, err := config.Load(path, config.Overrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Version != 1 {
+		t.Fatalf("version = %d, want the default 1", cfg.Version)
+	}
+	if cfg.Proxy.Listen != config.DefaultListen {
+		t.Fatalf("listen = %q, want %q", cfg.Proxy.Listen, config.DefaultListen)
+	}
+	if got := cfg.Rules[0].Match.Path; got != "/users" {
+		t.Fatalf("path = %q, want it trimmed", got)
+	}
+	if got := cfg.Rules[0].Match.Methods[0]; got != "GET" {
+		t.Fatalf("method = %q, want it uppercased", got)
+	}
+}
+
+func TestLoadRejectsInvalidConfig(t *testing.T) {
+	path := writeConfig(t, `
+proxy:
+  target: "ftp://localhost:3000"
+`)
+	if _, err := config.Load(path, config.Overrides{}); err == nil {
+		t.Fatal("expected Load to reject an invalid configuration")
+	}
+}
+
+func TestLoadWithoutPathUsesDefaultsAndOverrides(t *testing.T) {
+	cfg, err := config.Load("", config.Overrides{Target: "http://localhost:3000"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Proxy.Listen != config.DefaultListen {
+		t.Fatalf("listen = %q", cfg.Proxy.Listen)
+	}
+	if cfg.Proxy.Target != "http://localhost:3000" {
+		t.Fatalf("target = %q", cfg.Proxy.Target)
+	}
+}
+
+// A blank method used to be dropped, leaving an empty list that the matcher
+// reads as "every method" — the rule then applied to traffic it was meant to
+// exclude. It must fail at startup instead.
+func TestBlankMethodIsRejected(t *testing.T) {
+	path := writeConfig(t, `
+proxy:
+  target: "http://localhost:3000"
+rules:
+  - name: only-post
+    match:
+      path: "/payments"
+      methods:
+        - "  "
+    effects:
+      response:
+        status: 503
+`)
+	_, err := config.Load(path, config.Overrides{})
+	if err == nil {
+		t.Fatal("expected a blank method to be rejected")
+	}
+	if !strings.Contains(err.Error(), "invalid HTTP method") {
+		t.Fatalf("error %q, want it to mention the invalid method", err.Error())
+	}
+}
+
+// Omitting the key still means "all methods"; that is the documented behaviour.
+func TestOmittedMethodsStillMeansAll(t *testing.T) {
+	path := writeConfig(t, `
+proxy:
+  target: "http://localhost:3000"
+rules:
+  - name: everything
+    match:
+      path: "/payments"
+    effects:
+      response:
+        status: 503
+`)
+	cfg, err := config.Load(path, config.Overrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Rules[0].Match.Methods) != 0 {
+		t.Fatalf("methods = %#v, want empty", cfg.Rules[0].Match.Methods)
 	}
 }
 

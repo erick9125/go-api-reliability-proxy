@@ -30,17 +30,21 @@ type Engine struct {
 }
 
 func New(opts Options) *Engine {
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
 	random := opts.Random
 	if random == nil {
 		random = NewLockedRandom(opts.Seed)
+	} else if opts.Seed != nil {
+		// Both were set, and Random wins. Saying so beats letting the seed look
+		// like it took effect.
+		logger.Warn("ignoring seed because an explicit random source was provided")
 	}
 	sleeper := opts.Sleeper
 	if sleeper == nil {
 		sleeper = TimerSleeper{}
-	}
-	logger := opts.Logger
-	if logger == nil {
-		logger = slog.Default()
 	}
 	m := opts.Metrics
 	if m == nil {

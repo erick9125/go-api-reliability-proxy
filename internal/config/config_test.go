@@ -173,6 +173,82 @@ rules:
 `,
 			wantSub: "rule name is required",
 		},
+		{
+			name: "timeout shadows response",
+			yaml: `
+version: 1
+proxy:
+  target: "http://localhost:3000"
+rules:
+  - name: timeout-and-response
+    match:
+      path: "/a"
+    effects:
+      timeout:
+        duration: 30s
+      response:
+        status: 429
+`,
+			wantSub: "timeout always ends the request, so response can never run",
+		},
+		{
+			name: "timeout shadows reset failure and response",
+			yaml: `
+version: 1
+proxy:
+  target: "http://localhost:3000"
+rules:
+  - name: timeout-and-everything
+    match:
+      path: "/a"
+    effects:
+      timeout:
+        duration: 30s
+      reset: {}
+      failure:
+        probability: 0.5
+        status: 503
+      response:
+        status: 429
+`,
+			wantSub: "so reset, failure and response can never run",
+		},
+		{
+			name: "certain reset shadows failure",
+			yaml: `
+version: 1
+proxy:
+  target: "http://localhost:3000"
+rules:
+  - name: reset-and-failure
+    match:
+      path: "/a"
+    effects:
+      reset: {}
+      failure:
+        probability: 0.5
+        status: 503
+`,
+			wantSub: "reset always ends the request, so failure can never run",
+		},
+		{
+			name: "reset with probability 1 shadows response",
+			yaml: `
+version: 1
+proxy:
+  target: "http://localhost:3000"
+rules:
+  - name: certain-reset-and-response
+    match:
+      path: "/a"
+    effects:
+      reset:
+        probability: 1.0
+      response:
+        status: 429
+`,
+			wantSub: "reset always ends the request, so response can never run",
+		},
 	}
 
 	for _, tt := range tests {
@@ -199,6 +275,119 @@ rules:
 			}
 			if !strings.Contains(err.Error(), tt.wantSub) {
 				t.Fatalf("error %q does not contain %q", err.Error(), tt.wantSub)
+			}
+		})
+	}
+}
+
+// The reachability check must reject only what the engine really shadows.
+// These combinations have a reachable path and are documented as supported.
+func TestValidateAcceptsReachableEffectCombinations(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{
+			// failure is probabilistic, so response covers the case where it did
+			// not fire. Documented in the README.
+			name: "failure then response",
+			yaml: `
+version: 1
+proxy:
+  target: "http://localhost:3000"
+rules:
+  - name: flaky-then-rate-limited
+    match:
+      path: "/a"
+    effects:
+      failure:
+        probability: 0.2
+        status: 503
+      response:
+        status: 429
+`,
+		},
+		{
+			// A reset that does not always fire leaves failure reachable.
+			name: "probabilistic reset then failure",
+			yaml: `
+version: 1
+proxy:
+  target: "http://localhost:3000"
+rules:
+  - name: sometimes-reset
+    match:
+      path: "/a"
+    effects:
+      reset:
+        probability: 0.3
+      failure:
+        probability: 0.5
+        status: 503
+`,
+		},
+		{
+			// Latency never ends the request, so it composes with anything.
+			name: "latency then failure",
+			yaml: `
+version: 1
+proxy:
+  target: "http://localhost:3000"
+rules:
+  - name: slow-and-flaky
+    match:
+      path: "/a"
+    effects:
+      latency:
+        fixed: 100ms
+      failure:
+        probability: 0.5
+        status: 503
+`,
+		},
+		{
+			name: "latency then timeout",
+			yaml: `
+version: 1
+proxy:
+  target: "http://localhost:3000"
+rules:
+  - name: slow-then-timeout
+    match:
+      path: "/a"
+    effects:
+      latency:
+        fixed: 100ms
+      timeout:
+        duration: 30s
+`,
+		},
+		{
+			name: "timeout alone",
+			yaml: `
+version: 1
+proxy:
+  target: "http://localhost:3000"
+rules:
+  - name: just-timeout
+    match:
+      path: "/a"
+    effects:
+      timeout:
+        duration: 30s
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var cfg config.Config
+			if err := yaml.Unmarshal([]byte(tt.yaml), &cfg); err != nil {
+				t.Fatal(err)
+			}
+			cfg.Normalize()
+			if err := config.Validate(cfg); err != nil {
+				t.Fatalf("expected a valid configuration, got %v", err)
 			}
 		})
 	}

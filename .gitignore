@@ -8,3 +8,6 @@
 .vscode/
 *.swp
 .DS_Store
+
+# Informe de QA local, no versionado
+QA-REPORT.md

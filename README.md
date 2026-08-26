@@ -171,7 +171,7 @@ rules:
 
 See `examples/basic.yaml`, `examples/flaky-api.yaml`, and `examples/rate-limit.yaml`.
 
-Invalid configuration fails at startup. Examples: missing target, non-http(s) target, probability outside `[0, 1]`, HTTP status `999`, `latency.min > latency.max`, unnamed rules, duplicate rule names.
+Invalid configuration fails at startup. Examples: missing target, non-http(s) target, probability outside `[0, 1]`, HTTP status `999`, `latency.min > latency.max`, unnamed rules, duplicate rule names, and rules whose effects can never run (see [Effect order](#rate-limit-simulation)).
 
 ### CLI
 
@@ -283,6 +283,13 @@ If you set `Content-Type`, it is preserved. The proxy does not guess content typ
 `failure` is probabilistic. `response` always fires when the rule matches (after latency, and after a failure that did not inject).
 
 Effect order: latency → timeout → reset → failure → response.
+
+The first effect that ends the request wins, so a rule cannot declare an effect that could never run. Configurations where one effect permanently shadows another are rejected at startup rather than silently ignored:
+
+- `timeout` combined with `reset`, `failure`, or `response` — `timeout` always ends the request.
+- `reset` without a probability (or with `probability: 1.0`) combined with `failure` or `response` — that reset always fires.
+
+Combinations with a reachable path stay valid: `latency` composes with everything because it never ends the request, `failure` + `response` is the documented pairing above, and a `reset` with `probability` below 1 leaves the effects behind it reachable. Split anything else into separate rules.
 
 ## Metrics
 

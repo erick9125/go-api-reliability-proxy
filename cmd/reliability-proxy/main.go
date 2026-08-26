@@ -78,16 +78,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 
-	cfg, err := loadConfig(*configPath)
-	if err != nil {
-		return err
-	}
-	cfg.ApplyOverrides(config.Overrides{
+	cfg, err := config.Load(*configPath, config.Overrides{
 		Listen: *listen,
 		Target: *target,
 	})
-	cfg.Normalize()
-	if err := config.Validate(cfg); err != nil {
+	if err != nil {
 		return err
 	}
 
@@ -129,17 +124,6 @@ func run(args []string, stdout, stderr io.Writer) error {
 		Handler: handler,
 		Logger:  logger,
 	})
-}
-
-func loadConfig(path string) (config.Config, error) {
-	if path == "" {
-		return config.Default(), nil
-	}
-	cfg, err := config.Load(path)
-	if err != nil {
-		return config.Config{}, err
-	}
-	return cfg, nil
 }
 
 func formatVersion() string {

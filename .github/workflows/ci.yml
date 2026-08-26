@@ -35,3 +35,11 @@ jobs:
 
       - name: Docker build
         run: docker build -t reliability-proxy .
+
+      # Catches a broken release config here instead of at tag time, when the
+      # release is already half-published.
+      - name: Check GoReleaser config
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: check

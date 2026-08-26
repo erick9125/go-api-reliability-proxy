@@ -3,6 +3,7 @@ package integration_test
 import (
 	"encoding/json"
 	"net/http"
+	"sync/atomic"
 	"testing"
 
 	"github.com/erick9125/go-api-reliability-proxy/internal/metrics"
@@ -48,6 +49,35 @@ func TestInternalHealthAndStatus(t *testing.T) {
 	status.Body.Close()
 	if snap.Requests < 1 || snap.Proxied < 1 {
 		t.Fatalf("unexpected snapshot: %+v", snap)
+	}
+}
+
+// Only /__reliability and /__reliability/... are reserved. Paths that merely
+// start with those characters belong to the upstream.
+func TestPathsAdjacentToInternalNamespaceAreProxied(t *testing.T) {
+	paths := []string{"/__reliabilityX/report", "/__reliability-report", "/__reliability_v2"}
+
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			var reached atomic.Bool
+			upstream := newUpstream(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != path {
+					t.Errorf("upstream saw %q, want %q", r.URL.Path, path)
+				}
+				reached.Store(true)
+				w.WriteHeader(http.StatusOK)
+			}))
+			p := newProxyServer(t, upstream.URL, nil, proxy.Options{})
+
+			resp, err := http.Get(p.URL + path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if !reached.Load() {
+				t.Fatalf("%s was intercepted (status %d) instead of proxied", path, resp.StatusCode)
+			}
+		})
 	}
 }
 

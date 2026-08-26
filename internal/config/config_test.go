@@ -494,6 +494,99 @@ rules:
 	}
 }
 
+func TestMethodValidation(t *testing.T) {
+	tests := []struct {
+		method string
+		valid  bool
+	}{
+		{method: "GET", valid: true},
+		{method: "PATCH", valid: true},
+		{method: "M-SEARCH", valid: true}, // RFC 7230 token, was rejected before
+		{method: "X_CUSTOM.v2", valid: true},
+		{method: "Ä", valid: false}, // unicode.IsUpper used to accept this
+		{method: "GET METHOD", valid: false},
+		{method: "GET\tX", valid: false},
+		{method: "", valid: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.method, func(t *testing.T) {
+			cfg := config.Config{
+				Version: 1,
+				Proxy:   config.ProxyConfig{Target: "http://localhost:3000"},
+				Rules: []rules.Rule{{
+					Name:    "rule",
+					Match:   rules.MatchConfig{Path: "/a", Methods: []string{tt.method}},
+					Effects: rules.Effects{Response: &rules.ResponseConfig{Status: 503}},
+				}},
+			}
+			cfg.Normalize()
+			err := config.Validate(cfg)
+			if tt.valid && err != nil {
+				t.Fatalf("method %q should be valid, got %v", tt.method, err)
+			}
+			if !tt.valid && err == nil {
+				t.Fatalf("method %q should be rejected", tt.method)
+			}
+		})
+	}
+}
+
+func TestReservedResponseHeadersAreRejected(t *testing.T) {
+	for _, header := range []string{"Content-Length", "Transfer-Encoding", "connection", "Upgrade"} {
+		t.Run(header, func(t *testing.T) {
+			cfg := config.Config{
+				Version: 1,
+				Proxy:   config.ProxyConfig{Target: "http://localhost:3000"},
+				Rules: []rules.Rule{{
+					Name:  "rule",
+					Match: rules.MatchConfig{Path: "/a"},
+					Effects: rules.Effects{Response: &rules.ResponseConfig{
+						Status:  503,
+						Headers: map[string]rules.HeaderValues{header: {"1"}},
+					}},
+				}},
+			}
+			cfg.Normalize()
+			if err := config.Validate(cfg); err == nil {
+				t.Fatalf("header %q should be rejected", header)
+			}
+		})
+	}
+}
+
+// A scalar and a list must both parse, so existing configurations keep working
+// while repeated headers become expressible.
+func TestHeadersAcceptScalarAndList(t *testing.T) {
+	path := writeConfig(t, `
+proxy:
+  target: "http://localhost:3000"
+rules:
+  - name: unauthorized
+    match:
+      path: "/a"
+    effects:
+      response:
+        status: 401
+        headers:
+          Retry-After: "10"
+          WWW-Authenticate:
+            - Bearer
+            - Basic realm="api"
+`)
+	cfg, err := config.Load(path, config.Overrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers := cfg.Rules[0].Effects.Response.Headers
+	if got := headers["Retry-After"]; len(got) != 1 || got[0] != "10" {
+		t.Fatalf("Retry-After = %#v, want one value", got)
+	}
+	if got := headers["WWW-Authenticate"]; len(got) != 2 || got[0] != "Bearer" {
+		t.Fatalf("WWW-Authenticate = %#v, want two values", got)
+	}
+}
+
 func TestCLIOverridesYAML(t *testing.T) {
 	cfg := config.Config{
 		Version: 1,

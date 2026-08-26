@@ -11,7 +11,13 @@ import (
 )
 
 type Result struct {
+	// Stop reports whether the effect already answered the client, so the
+	// request must not be forwarded upstream.
 	Stop bool
+	// Faulted reports whether at least one effect actually ran. It stays false
+	// when a probabilistic effect declined to fire, or when an effect was cut
+	// short before taking hold.
+	Faulted bool
 }
 
 type Options struct {
@@ -59,37 +65,44 @@ func New(opts Options) *Engine {
 }
 
 func (e *Engine) Apply(ctx context.Context, rule rules.Rule, w http.ResponseWriter, r *http.Request) (Result, error) {
+	faulted := false
+
 	if rule.Effects.Latency != nil {
-		if err := e.applyLatency(ctx, rule, r); err != nil {
-			return Result{Stop: true}, err
+		applied, err := e.applyLatency(ctx, rule, r)
+		faulted = faulted || applied
+		if err != nil {
+			return Result{Stop: true, Faulted: faulted}, err
 		}
 	}
 	if rule.Effects.Timeout != nil {
-		if err := e.applyTimeout(ctx, rule, w, r); err != nil {
-			return Result{Stop: true}, err
+		applied, err := e.applyTimeout(ctx, rule, w, r)
+		faulted = faulted || applied
+		if err != nil {
+			return Result{Stop: true, Faulted: faulted}, err
 		}
-		return Result{Stop: true}, nil
+		return Result{Stop: true, Faulted: faulted}, nil
 	}
 	if rule.Effects.Reset != nil {
-		stop, err := e.applyReset(rule, w, r)
+		stop, applied, err := e.applyReset(rule, w, r)
+		faulted = faulted || applied
 		if err != nil {
-			return Result{Stop: true}, err
+			return Result{Stop: true, Faulted: faulted}, err
 		}
 		if stop {
-			return Result{Stop: true}, nil
+			return Result{Stop: true, Faulted: faulted}, nil
 		}
 	}
 	if rule.Effects.Failure != nil {
 		if e.shouldFail(*rule.Effects.Failure.Probability) {
 			e.applyFailure(rule, w, r)
-			return Result{Stop: true}, nil
+			return Result{Stop: true, Faulted: true}, nil
 		}
 	}
 	if rule.Effects.Response != nil {
 		e.applyResponse(rule, w, r)
-		return Result{Stop: true}, nil
+		return Result{Stop: true, Faulted: true}, nil
 	}
-	return Result{Stop: false}, nil
+	return Result{Stop: false, Faulted: faulted}, nil
 }
 
 func (e *Engine) shouldFail(probability float64) bool {

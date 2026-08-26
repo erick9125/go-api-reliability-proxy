@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-	"unicode"
 
 	"github.com/erick9125/go-api-reliability-proxy/internal/rules"
 )
@@ -200,11 +199,46 @@ func validateFailure(name string, failure *rules.FailureConfig) error {
 	if err := validateProbability(name, "failure.probability", *failure.Probability); err != nil {
 		return err
 	}
-	return validateStatus(name, "failure.status", failure.Status)
+	if err := validateStatus(name, "failure.status", failure.Status); err != nil {
+		return err
+	}
+	return validateHeaders(name, "failure.headers", failure.Headers)
 }
 
 func validateResponse(name string, response *rules.ResponseConfig) error {
-	return validateStatus(name, "response.status", response.Status)
+	if err := validateStatus(name, "response.status", response.Status); err != nil {
+		return err
+	}
+	return validateHeaders(name, "response.headers", response.Headers)
+}
+
+// reservedHeaders are managed by net/http per connection. Setting them from a
+// rule produces a malformed response instead of the fault the author intended.
+var reservedHeaders = map[string]string{
+	"connection":          "hop-by-hop, managed by the server",
+	"keep-alive":          "hop-by-hop, managed by the server",
+	"proxy-authenticate":  "hop-by-hop, managed by the server",
+	"proxy-authorization": "hop-by-hop, managed by the server",
+	"te":                  "hop-by-hop, managed by the server",
+	"trailer":             "hop-by-hop, managed by the server",
+	"transfer-encoding":   "hop-by-hop, managed by the server",
+	"upgrade":             "hop-by-hop, managed by the server",
+	"content-length":      "computed from the body",
+}
+
+func validateHeaders(name, field string, headers map[string]rules.HeaderValues) error {
+	for key, values := range headers {
+		if strings.TrimSpace(key) == "" {
+			return ruleError(name, fmt.Sprintf("%s contains an empty header name", field))
+		}
+		if reason, reserved := reservedHeaders[strings.ToLower(strings.TrimSpace(key))]; reserved {
+			return ruleError(name, fmt.Sprintf("%s must not set %q: %s", field, key, reason))
+		}
+		if len(values) == 0 {
+			return ruleError(name, fmt.Sprintf("%s: %q needs at least one value", field, key))
+		}
+	}
+	return nil
 }
 
 func validateStatus(name, field string, status int) error {
@@ -225,14 +259,30 @@ func ruleError(name, message string) error {
 	return fmt.Errorf("invalid configuration: rule %q: %s", name, message)
 }
 
+// validMethod accepts any RFC 7230 token. The previous rule leaned on
+// unicode.IsUpper, which let non-ASCII letters through while rejecting real
+// methods that contain a hyphen, such as M-SEARCH.
 func validMethod(method string) bool {
 	if method == "" {
 		return false
 	}
 	for _, r := range method {
-		if !unicode.IsUpper(r) && !unicode.IsDigit(r) {
+		if !isTokenChar(r) {
 			return false
 		}
 	}
 	return true
+}
+
+// isTokenChar reports whether r is a tchar from RFC 7230 section 3.2.6.
+func isTokenChar(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z':
+		return true
+	case r >= 'A' && r <= 'Z':
+		return true
+	case r >= '0' && r <= '9':
+		return true
+	}
+	return strings.ContainsRune("!#$%&'*+-.^_`|~", r)
 }

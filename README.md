@@ -83,7 +83,7 @@ Start the proxy:
 reliability-proxy \
   --target http://localhost:3000 \
   --config reliability.yaml \
-  --listen :8080
+  --listen 127.0.0.1:8080
 ```
 
 Point the client at:
@@ -95,7 +95,7 @@ http://localhost:8080
 Minimal flags:
 
 ```bash
-reliability-proxy --target http://localhost:3000 --listen :8080
+reliability-proxy --target http://localhost:3000 --listen 127.0.0.1:8080
 ```
 
 Example rule:
@@ -148,14 +148,14 @@ CLI flags override YAML, which overrides defaults.
 | Source | Example |
 | --- | --- |
 | CLI | `--listen :9090` |
-| YAML | `proxy.listen: ":8080"` |
+| YAML | `proxy.listen: "127.0.0.1:8080"` |
 | Default listen | `127.0.0.1:8080` |
 
 ```yaml
 version: 1
 
 proxy:
-  listen: ":8080"
+  listen: "127.0.0.1:8080"
   target: "http://localhost:3000"
 
 rules:
@@ -189,7 +189,7 @@ Options:
       upstream API URL
 
   --listen string
-      proxy listen address (default "127.0.0.1:8080")
+      proxy listen address (falls back to proxy.listen, then to 127.0.0.1:8080)
 
   --seed int
       optional RNG seed for deterministic fault injection
@@ -250,6 +250,8 @@ timeout:
   duration: 30s
 ```
 
+The two waits **add up** when a rule declares both. A rule with `latency.fixed: 1s` and `timeout.duration: 30s` answers after 31 seconds and counts two injected faults. Put the whole delay in `timeout.duration` unless you specifically want that.
+
 ## Connection Reset
 
 ```yaml
@@ -280,6 +282,22 @@ response:
 
 If you set `Content-Type`, it is preserved and sent as-is. If you omit it, the proxy does not add one — but `net/http` then sniffs the body and fills it in, so a JSON body without an explicit `Content-Type` goes out as `text/plain; charset=utf-8`. Set it explicitly whenever the body's type matters to the client under test.
 
+A header can carry several values. Write a list instead of a string:
+
+```yaml
+response:
+  status: 401
+  headers:
+    WWW-Authenticate:
+      - Bearer
+      - Basic realm="api"
+    Set-Cookie:
+      - "session=; Max-Age=0"
+      - "csrf=; Max-Age=0"
+```
+
+Headers that belong to the connection rather than the response are rejected at startup: `Connection`, `Keep-Alive`, `Proxy-Authenticate`, `Proxy-Authorization`, `TE`, `Trailer`, `Transfer-Encoding`, `Upgrade`, and `Content-Length`. Setting them by hand produces a malformed response rather than the fault you meant to inject.
+
 `failure` is probabilistic. `response` always fires when the rule matches (after latency, and after a failure that did not inject).
 
 Effect order: latency → timeout → reset → failure → response.
@@ -300,9 +318,22 @@ Combinations with a reachable path stay valid: `latency` composes with everythin
   "requests": 1024,
   "matched": 311,
   "faultsInjected": 73,
+  "requestsFaulted": 58,
   "proxied": 951
 }
 ```
+
+| Counter | Meaning |
+| --- | --- |
+| `requests` | Requests that reached the proxy. Excludes `/__reliability/*`. |
+| `matched` | Requests that matched a rule. A match does not imply a fault: probabilistic effects may decline to fire. |
+| `faultsInjected` | Individual **effects** that took hold. One request can add more than one, because a rule may combine effects such as latency and failure. |
+| `requestsFaulted` | **Requests** that experienced at least one effect. This is the number to compare against `requests`. |
+| `proxied` | Requests forwarded upstream, regardless of how the upstream then responded. A request that ends in `502` still counts. |
+
+Effects that never reach the client are not counted. If a client disconnects while a latency or timeout is still being served, nothing is recorded, and a `reset` on a connection that cannot be hijacked counts nothing either.
+
+Per-rule counters are not available in 0.1; see the roadmap.
 
 `GET /__reliability/health`
 
@@ -318,7 +349,7 @@ Full configuration is not exposed (it may contain operational details you do not
 
 ## Security
 
-- Default listen address is `127.0.0.1:8080`, not `0.0.0.0`
+- Default listen address is `127.0.0.1:8080`, not `0.0.0.0`. Every example here binds to loopback on purpose — writing `--listen :8080` exposes the proxy on **all** interfaces, which is only appropriate inside a container or on a trusted network
 - Target is fixed per process from trusted configuration. Requests cannot set an upstream with headers such as `X-Target-URL`
 - Logs do not include Authorization, Cookie, request bodies, or full query strings
 - Traffic is not recorded or persisted

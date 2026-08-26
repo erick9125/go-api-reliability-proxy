@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -29,9 +30,17 @@ type Handler struct {
 }
 
 func New(cfg config.Config, opts Options) (*Handler, error) {
+	// config.Load already guarantees this, but New is reachable with a Config
+	// built by hand. Failing here beats proxying to an empty URL.
 	target, err := url.Parse(cfg.Proxy.Target)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("proxy target %q is not a valid URL: %w", cfg.Proxy.Target, err)
+	}
+	if target.Scheme != "http" && target.Scheme != "https" {
+		return nil, fmt.Errorf("proxy target %q must use http or https", cfg.Proxy.Target)
+	}
+	if target.Host == "" {
+		return nil, fmt.Errorf("proxy target %q must include a host", cfg.Proxy.Target)
 	}
 	logger := opts.Logger
 	if logger == nil {

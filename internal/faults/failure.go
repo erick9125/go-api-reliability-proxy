@@ -21,9 +21,13 @@ func (e *Engine) applyResponse(rule rules.Rule, w http.ResponseWriter, r *http.R
 	writeResponse(w, cfg.Status, cfg.Headers, cfg.Body)
 }
 
-func writeResponse(w http.ResponseWriter, status int, headers map[string]string, body string) {
-	for key, value := range headers {
-		w.Header().Set(key, value)
+func writeResponse(w http.ResponseWriter, status int, headers map[string]rules.HeaderValues, body string) {
+	for key, values := range headers {
+		// Add, not Set: a header configured with several values must reach the
+		// client as several values.
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
 	}
 	w.WriteHeader(status)
 	if body != "" {

@@ -15,23 +15,21 @@ import (
 type Options struct {
 	Logger  *slog.Logger
 	Metrics *metrics.Metrics
-	Random  faults.Random
-	Sleeper faults.Sleeper
-	Seed    *int64
+	// Faults configures the fault engine; Logger and Metrics above are
+	// propagated into it, so setting them here has no effect.
+	Faults faults.Options
 }
 
 type Handler struct {
 	proxy   http.Handler
-	matcher rules.Matcher
+	matcher *rules.RuleMatcher
 	engine  *faults.Engine
 	metrics *metrics.Metrics
 	logger  *slog.Logger
-	rules   int
 }
 
 func New(cfg config.Config, opts Options) (*Handler, error) {
-	// config.Load already guarantees this, but New is reachable with a Config
-	// built by hand. Failing here beats proxying to an empty URL.
+	// config.Load guarantees this, but New also takes hand-built Configs.
 	target, err := url.Parse(cfg.Proxy.Target)
 	if err != nil {
 		return nil, fmt.Errorf("proxy target %q is not a valid URL: %w", cfg.Proxy.Target, err)
@@ -50,27 +48,19 @@ func New(cfg config.Config, opts Options) (*Handler, error) {
 	if m == nil {
 		m = metrics.New()
 	}
-	engine := faults.New(faults.Options{
-		Random:  opts.Random,
-		Sleeper: opts.Sleeper,
-		Seed:    opts.Seed,
-		Metrics: m,
-		Logger:  logger,
-	})
+	faultOpts := opts.Faults
+	faultOpts.Logger = logger
+	faultOpts.Metrics = m
+
 	return &Handler{
 		proxy:   newReverseProxy(target, logger),
 		matcher: rules.NewMatcher(cfg.Rules),
-		engine:  engine,
+		engine:  faults.New(faultOpts),
 		metrics: m,
 		logger:  logger,
-		rules:   len(cfg.Rules),
 	}, nil
 }
 
 func (h *Handler) Metrics() *metrics.Metrics {
 	return h.metrics
-}
-
-func (h *Handler) RuleCount() int {
-	return h.rules
 }

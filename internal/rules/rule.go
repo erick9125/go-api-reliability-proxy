@@ -46,10 +46,7 @@ type ResetConfig struct {
 	Probability *float64 `yaml:"probability,omitempty"`
 }
 
-// cloneRule returns a rule that shares nothing with the original. Every pointer
-// and map in Effects is duplicated, so a matcher built from a caller's slice
-// cannot be mutated through it afterwards.
-//
+// cloneRule returns a rule that shares nothing with the original.
 // Adding a field to any effect means adding it here too.
 func cloneRule(r Rule) Rule {
 	out := r

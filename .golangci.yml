@@ -1,0 +1,36 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck      # unchecked errors
+    - govet
+    - ineffassign   # assignments never read
+    - staticcheck   # correctness and simplification
+    - unused        # dead code, which QA found by hand
+    - misspell
+    - revive        # replaces the deprecated golint
+    - bodyclose     # leaked HTTP response bodies
+    - noctx         # requests built without a context
+    - predeclared   # shadowing builtins such as min and max
+
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true  # internal/ packages are not a public API
+
+  exclusions:
+    rules:
+      # Idiomatic in tests and pure noise there; production code stays checked.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - noctx
+
+formatters:
+  enable:
+    - gofmt
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

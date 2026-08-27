@@ -99,12 +99,12 @@ func TestRandomLatencyRange(t *testing.T) {
 	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/jitter", nil)
-	min := rules.Duration{Duration: 100 * time.Millisecond}
-	max := rules.Duration{Duration: 300 * time.Millisecond}
+	lo := rules.Duration{Duration: 100 * time.Millisecond}
+	hi := rules.Duration{Duration: 300 * time.Millisecond}
 	_, err := engine.Apply(req.Context(), rules.Rule{
 		Name: "jitter",
 		Effects: rules.Effects{
-			Latency: &rules.LatencyConfig{Min: &min, Max: &max},
+			Latency: &rules.LatencyConfig{Min: &lo, Max: &hi},
 		},
 	}, rec, req)
 	if err != nil {
@@ -206,8 +206,7 @@ func TestTimeoutReturns504(t *testing.T) {
 	}
 }
 
-// --seed is advertised as making probabilistic faults repeatable. That holds
-// for sequential traffic: the same seed must replay the same decisions.
+// The same seed must replay the same decisions on sequential traffic.
 func TestSeedMakesSequentialDecisionsRepeatable(t *testing.T) {
 	seed := int64(42)
 
@@ -248,8 +247,7 @@ func TestSeedMakesSequentialDecisionsRepeatable(t *testing.T) {
 		}
 	}
 
-	// A run that never injects would pass the comparison above without proving
-	// anything about the seed.
+	// An all-or-nothing run would pass the comparison without proving anything.
 	injected := 0
 	for _, stop := range first {
 		if stop {

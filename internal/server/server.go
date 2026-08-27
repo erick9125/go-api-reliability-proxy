@@ -20,9 +20,8 @@ func Run(ctx context.Context, opts Options) error {
 		logger = slog.Default()
 	}
 
-	// ctx solo dispara el apagado: no puede ser el padre de los contextos de
-	// petición. Si lo fuera, la señal cancelaría de golpe todas las peticiones en
-	// vuelo y Shutdown no tendría nada que drenar.
+	// ctx only triggers shutdown: parenting request contexts here would cancel
+	// in-flight requests on signal, leaving Shutdown nothing to drain.
 	srv := &http.Server{
 		Addr:              opts.Addr,
 		Handler:           opts.Handler,

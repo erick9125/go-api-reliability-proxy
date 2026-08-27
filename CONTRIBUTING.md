@@ -13,15 +13,22 @@ Useful commands:
 ```bash
 gofmt -w .
 go vet ./...
+make lint          # golangci-lint, see below
 go test ./...
 go test -race ./...
 go build ./cmd/reliability-proxy
 ```
 
+`make lint` needs golangci-lint, which CI also runs:
+
+```bash
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+```
+
 ## Pull requests
 
 - Keep changes focused.
-- Run `gofmt`, `go vet`, `go test ./...`, and `go test -race ./...` before opening a PR.
+- Run `gofmt`, `go vet`, `make lint`, `go test ./...`, and `go test -race ./...` before opening a PR.
 - Prefer table-driven tests.
 - Do not log Authorization, Cookie, request bodies, or full query strings.
 - Do not add an open-proxy feature such as choosing the upstream from request headers.

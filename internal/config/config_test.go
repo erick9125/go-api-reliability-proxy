@@ -276,16 +276,14 @@ rules:
 	}
 }
 
-// The reachability check must reject only what the engine really shadows.
-// These combinations have a reachable path and are documented as supported.
+// These combinations have a reachable path and must stay valid.
 func TestValidateAcceptsReachableEffectCombinations(t *testing.T) {
 	tests := []struct {
 		name string
 		yaml string
 	}{
 		{
-			// failure is probabilistic, so response covers the case where it did
-			// not fire. Documented in the README.
+			// response covers the case where the probabilistic failure did not fire.
 			name: "failure then response",
 			yaml: `
 version: 1
@@ -323,7 +321,7 @@ rules:
 `,
 		},
 		{
-			// Latency never ends the request, so it composes with anything.
+			// Latency never ends the request.
 			name: "latency then failure",
 			yaml: `
 version: 1
@@ -389,8 +387,7 @@ rules:
 	}
 }
 
-// Load owns the whole pipeline, so callers cannot skip a step and end up with a
-// Config that looks fine but matches nothing.
+// Load owns the whole pipeline, so callers cannot skip a step.
 func TestLoadNormalizesAndValidates(t *testing.T) {
 	path := writeConfig(t, `
 proxy:
@@ -446,9 +443,7 @@ func TestLoadWithoutPathUsesDefaultsAndOverrides(t *testing.T) {
 	}
 }
 
-// A blank method used to be dropped, leaving an empty list that the matcher
-// reads as "every method" — the rule then applied to traffic it was meant to
-// exclude. It must fail at startup instead.
+// A blank method must fail at startup, not widen the rule to every method.
 func TestBlankMethodIsRejected(t *testing.T) {
 	path := writeConfig(t, `
 proxy:
@@ -472,7 +467,7 @@ rules:
 	}
 }
 
-// Omitting the key still means "all methods"; that is the documented behaviour.
+// Omitting the key still means "all methods".
 func TestOmittedMethodsStillMeansAll(t *testing.T) {
 	path := writeConfig(t, `
 proxy:
@@ -555,8 +550,7 @@ func TestReservedResponseHeadersAreRejected(t *testing.T) {
 	}
 }
 
-// A scalar and a list must both parse, so existing configurations keep working
-// while repeated headers become expressible.
+// A scalar and a list must both parse.
 func TestHeadersAcceptScalarAndList(t *testing.T) {
 	path := writeConfig(t, `
 proxy:

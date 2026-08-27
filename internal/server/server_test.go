@@ -34,9 +34,7 @@ func TestRunShutdown(t *testing.T) {
 	}
 }
 
-// Shutdown must drain in-flight requests instead of cancelling them. A request
-// context wired to the signal context made the server answer 200 with an empty
-// body, which reads as success to every client.
+// Shutdown must drain in-flight requests, not cancel them into an empty 200.
 func TestRunDrainsInFlightRequestOnShutdown(t *testing.T) {
 	const want = "completed after shutdown started"
 

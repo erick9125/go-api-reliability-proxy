@@ -110,14 +110,8 @@ func validateRule(rule rules.Rule, names map[string]struct{}) error {
 	return validateEffectReachability(rule)
 }
 
-// validateEffectReachability rejects rules whose effects can never run. The
-// engine applies effects in a fixed order (latency, timeout, reset, failure,
-// response) and the first one that ends the request wins, so without this check
-// a rule is accepted, starts silently, and does something other than it says.
-//
-// Only effects that *always* end the request shadow the ones behind them:
-// latency never stops, and a probabilistic reset or failure leaves a reachable
-// path, so those combinations stay valid.
+// validateEffectReachability rejects rules whose effects can never run, since
+// the first effect that always ends the request shadows the ones behind it.
 func validateEffectReachability(rule rules.Rule) error {
 	afterReset := effectsAfterReset(rule)
 
@@ -139,8 +133,7 @@ func validateEffectReachability(rule rules.Rule) error {
 	return nil
 }
 
-// effectsAfterReset lists the effects the engine evaluates once reset declined
-// to fire, in engine order.
+// effectsAfterReset lists the effects evaluated once reset declined to fire.
 func effectsAfterReset(rule rules.Rule) []string {
 	var names []string
 	if rule.Effects.Failure != nil {
@@ -212,8 +205,8 @@ func validateResponse(name string, response *rules.ResponseConfig) error {
 	return validateHeaders(name, "response.headers", response.Headers)
 }
 
-// reservedHeaders are managed by net/http per connection. Setting them from a
-// rule produces a malformed response instead of the fault the author intended.
+// reservedHeaders are managed per connection by net/http; setting them from a
+// rule yields a malformed response.
 var reservedHeaders = map[string]string{
 	"connection":          "hop-by-hop, managed by the server",
 	"keep-alive":          "hop-by-hop, managed by the server",
@@ -259,9 +252,7 @@ func ruleError(name, message string) error {
 	return fmt.Errorf("invalid configuration: rule %q: %s", name, message)
 }
 
-// validMethod accepts any RFC 7230 token. The previous rule leaned on
-// unicode.IsUpper, which let non-ASCII letters through while rejecting real
-// methods that contain a hyphen, such as M-SEARCH.
+// validMethod accepts any RFC 7230 token, so M-SEARCH passes and non-ASCII does not.
 func validMethod(method string) bool {
 	if method == "" {
 		return false

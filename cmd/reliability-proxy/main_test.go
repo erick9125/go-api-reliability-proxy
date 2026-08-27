@@ -31,8 +31,7 @@ func TestHelpFlag(t *testing.T) {
 	}
 }
 
-// usageText is hand-written, so nothing stops a new flag from being added
-// without documenting it. This keeps the two in step.
+// Keeps the hand-written usageText in step with the flag set.
 func TestUsageTextCoversEveryFlag(t *testing.T) {
 	fs, _ := newFlagSet(io.Discard)
 	fs.VisitAll(func(f *flag.Flag) {
@@ -61,8 +60,7 @@ rules:
 		t.Fatal(err)
 	}
 
-	// A bad listen address fails after the config was read, which proves the
-	// file was parsed and accepted without leaving a server running.
+	// Failing on the listen address proves the config was read and accepted.
 	var stdout, stderr bytes.Buffer
 	err := run([]string{"--config", path, "--listen", "256.256.256.256:99999"}, &stdout, &stderr)
 	if err == nil {
@@ -98,6 +96,52 @@ func TestMissingConfigFile(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "open configuration file") {
 		t.Fatalf("error %q", err.Error())
+	}
+}
+
+func TestInvalidLogFlagsAreRejected(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "level",
+			args: []string{"--target", "http://localhost:3000", "--log-level", "verbose"},
+			want: "invalid log level",
+		},
+		{
+			name: "format",
+			args: []string{"--target", "http://localhost:3000", "--log-format", "xml"},
+			want: "invalid log format",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			err := run(tt.args, &stdout, &stderr)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error %q, want it to mention %q", err.Error(), tt.want)
+			}
+		})
+	}
+}
+
+// Logs must not pollute stdout, which carries program output.
+func TestVersionOutputGoesToStdoutOnly(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if err := run([]string{"--version"}, &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr should be empty, got %q", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "reliability-proxy v") {
+		t.Fatalf("stdout = %q", stdout.String())
 	}
 }
 

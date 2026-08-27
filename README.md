@@ -192,11 +192,19 @@ Options:
       proxy listen address (falls back to proxy.listen, then to 127.0.0.1:8080)
 
   --seed int
-      optional RNG seed for deterministic fault injection
+      RNG seed for repeatable fault injection on sequential traffic
+
+  --log-level string
+      debug, info, warn or error (default "info")
+
+  --log-format string
+      text or json (default "text")
 
   --version
       print version and exit
 ```
+
+Logs go to stderr; stdout carries program output such as `--version`. Use `--log-format json` to make them machine-readable and `--log-level debug` while diagnosing rule matching.
 
 `--version` prints `reliability-proxy v0.1.0`.
 
@@ -228,6 +236,8 @@ latency:
   min: 100ms
   max: 1500ms
 ```
+
+The range is `[min, max)` — the upper bound is exclusive.
 
 Sleep respects `context.Context`. If the client cancels, the goroutine exits instead of ignoring cancellation.
 

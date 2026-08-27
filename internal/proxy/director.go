@@ -11,15 +11,11 @@ import (
 	"time"
 )
 
-// Upstream transport limits. http.DefaultTransport has no response header
-// timeout, so a hung upstream would pin a connection and its goroutine forever
-// — likely for a tool whose whole job is provoking adverse conditions. It also
-// caps idle connections per host at 2, which throttles a proxy under load.
-//
-// Injected latency runs before the request is forwarded, so it never counts
-// against responseHeaderTimeout; only genuine upstream slowness does.
+// Upstream limits. http.DefaultTransport sets no response header timeout and
+// allows only 2 idle connections per host, which throttles a proxy.
 const (
-	dialTimeout           = 10 * time.Second
+	dialTimeout = 10 * time.Second
+	// Injected latency runs before forwarding, so it never counts against this.
 	responseHeaderTimeout = 30 * time.Second
 	tlsHandshakeTimeout   = 10 * time.Second
 	idleConnTimeout       = 90 * time.Second

@@ -56,8 +56,7 @@ func TestInternalHealthAndStatus(t *testing.T) {
 	}
 }
 
-// Only /__reliability and /__reliability/... are reserved. Paths that merely
-// start with those characters belong to the upstream.
+// Paths that merely start with the reserved prefix belong to the upstream.
 func TestPathsAdjacentToInternalNamespaceAreProxied(t *testing.T) {
 	paths := []string{"/__reliabilityX/report", "/__reliability-report", "/__reliability_v2"}
 
@@ -109,8 +108,7 @@ func TestInternalEndpointsRejectOtherMethodsWithAllow(t *testing.T) {
 	}
 }
 
-// A latency that the client abandoned never reached anyone, so it must not be
-// counted as an injected fault.
+// A latency the client abandoned must not be counted as an injected fault.
 func TestAbandonedLatencyIsNotCounted(t *testing.T) {
 	upstream := newUpstream(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	fixed := rules.Duration{Duration: 2 * time.Second}
@@ -130,7 +128,9 @@ func TestAbandonedLatencyIsNotCounted(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := &http.Client{Timeout: 100 * time.Millisecond}
-	if _, err := client.Get(srv.URL + "/slow"); err == nil {
+	resp, err := client.Get(srv.URL + "/slow")
+	if err == nil {
+		resp.Body.Close()
 		t.Fatal("expected the client to time out")
 	}
 	time.Sleep(50 * time.Millisecond)

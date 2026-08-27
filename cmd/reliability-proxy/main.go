@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -145,15 +146,6 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	logger.Info("reliability proxy started",
-		"listen", cfg.Proxy.Listen,
-		"target", cfg.Proxy.Target,
-		"rules", len(cfg.Rules),
-		"version", formatVersion(),
-		"commit", commit,
-		"date", date,
-	)
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -161,6 +153,18 @@ func run(args []string, stdout, stderr io.Writer) error {
 		Addr:    cfg.Proxy.Listen,
 		Handler: handler,
 		Logger:  logger,
+		// Announcing the start before the bind made a failed startup look
+		// successful to anything reading the logs.
+		OnListen: func(addr net.Addr) {
+			logger.Info("reliability proxy started",
+				"listen", addr.String(),
+				"target", cfg.Proxy.Target,
+				"rules", len(cfg.Rules),
+				"version", formatVersion(),
+				"commit", commit,
+				"date", date,
+			)
+		},
 	})
 }
 

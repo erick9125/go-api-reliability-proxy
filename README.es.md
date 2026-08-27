@@ -38,14 +38,16 @@ Puede manipular el tráfico sin modificar la aplicación ni el backend.
 - La primera regla que coincide gana
 - Latencia fija y aleatoria
 - Fallos probabilísticos
-- Respuestas HTTP sintéticas
+- Respuestas HTTP sintéticas, con cabeceras de uno o varios valores
 - Timeout simulado
-- Connection reset (HTTP/1.x)
+- Connection reset (HTTP/1.x, un RST de TCP real)
 - Passthrough si ninguna regla aplica
-- Métricas internas
-- Logs estructurados
-- Apagado graceful
-- Tests unitarios, de integración y race detector
+- Validación al arrancar que rechaza efectos inalcanzables
+- Timeouts fijos hacia el upstream
+- Métricas internas, de efectos y de peticiones afectadas
+- Logs estructurados, texto o JSON, con nivel configurable
+- Apagado graceful que drena las peticiones en vuelo
+- Tests unitarios, de integración, race detector y golangci-lint
 
 El proxy **no** hace retries. Inyecta condiciones para que *tu* cliente las haga.
 
@@ -86,7 +88,7 @@ Las reglas se evalúan en orden de declaración. Se aplica la primera coincidenc
 
 - `/users` es exacto
 - `/users/*` es prefijo (`/users` y `/users/...`)
-- Sin `methods`, coinciden todos los métodos
+- Sin `methods`, coinciden todos los métodos. Un valor en blanco es un error de configuración, no un comodín
 - No hay regex en 0.1
 
 ## Efectos
@@ -106,7 +108,7 @@ Simulación de rate limit en 0.1: `429` + `Retry-After`. No hay token bucket.
 ## Métricas
 
 - `GET /__reliability/health` → `{"status":"ok"}`
-- `GET /__reliability/status` → contadores `requests`, `matched`, `faultsInjected`, `proxied`
+- `GET /__reliability/status` → contadores `requests`, `matched`, `faultsInjected`, `requestsFaulted`, `proxied`. `faultsInjected` cuenta **efectos** (una petición puede sumar varios) y `requestsFaulted` cuenta **peticiones** con al menos un efecto
 
 El namespace `/__reliability/*` está reservado.
 

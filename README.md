@@ -40,18 +40,20 @@ mobile app → localhost:8080 → proxy → localhost:3000
 - CLI (`flag`, no extra framework)
 - YAML configuration
 - Path matching: exact and trailing `/*` prefix
-- HTTP method matching (empty list means all methods)
+- HTTP method matching (omitting `methods` means all methods)
 - First matching rule wins
 - Fixed and random latency
 - Probabilistic failures
-- Synthetic HTTP responses, headers, and body
+- Synthetic HTTP responses, with single- or multi-valued headers and a body
 - Timeout simulation
-- Connection reset (HTTP/1.x)
+- Connection reset (HTTP/1.x, a real TCP RST)
 - Passthrough when no rule matches
-- In-process metrics
-- Structured logs
-- Graceful shutdown
-- Unit tests, integration tests, and race detector
+- Startup validation that rejects rules whose effects could never run
+- Fixed upstream timeouts, so a hung backend cannot pin connections
+- In-process metrics, counting both effects and affected requests
+- Structured logs, text or JSON, at a configurable level
+- Graceful shutdown that drains in-flight requests
+- Unit tests, integration tests, race detector, and golangci-lint
 
 The proxy does **not** retry. It injects conditions that force *your* client to retry.
 
@@ -217,7 +219,7 @@ Rules are evaluated in declaration order. The first matching rule is applied.
 - `/users` is an exact path match
 - `/users/*` matches `/users` and any path under `/users/`
 - Regex matching is not supported in 0.1
-- If `methods` is omitted or empty, all HTTP methods match
+- If `methods` is omitted, all HTTP methods match. A blank entry is a configuration error, not a wildcard
 - Methods are compared case-insensitively
 
 ## Latency Injection

@@ -33,11 +33,3 @@ func (l *LockedRandom) Float64() float64 {
 	defer l.mu.Unlock()
 	return l.rng.Float64()
 }
-
-type FixedRandom struct {
-	Value float64
-}
-
-func (f FixedRandom) Float64() float64 {
-	return f.Value
-}

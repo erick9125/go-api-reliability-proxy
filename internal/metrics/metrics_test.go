@@ -7,8 +7,7 @@ func TestMetricsSnapshot(t *testing.T) {
 	m.RecordRequest()
 	m.RecordRequest()
 	m.RecordMatch()
-	// One request, two effects: faultsInjected counts effects while
-	// requestsFaulted counts requests.
+	// One request, two effects.
 	m.RecordFault()
 	m.RecordFault()
 	m.RecordRequestFaulted()

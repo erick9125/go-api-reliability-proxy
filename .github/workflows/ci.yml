@@ -24,9 +24,12 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      # -coverpkg spans every package, otherwise the integration tests in
-      # tests/integration credit nothing to the packages they exercise and
-      # internal/proxy reads as 0% despite being covered.
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.13.1
+
+      # -coverpkg spans every package; without it tests/integration credits nothing.
       - name: Test
         run: go test -coverpkg=./... -coverprofile=coverage.out ./...
 
@@ -42,8 +45,7 @@ jobs:
       - name: Docker build
         run: docker build -t reliability-proxy .
 
-      # Catches a broken release config here instead of at tag time, when the
-      # release is already half-published.
+      # Catches a broken release config before tag time.
       - name: Check GoReleaser config
         uses: goreleaser/goreleaser-action@v6
         with:

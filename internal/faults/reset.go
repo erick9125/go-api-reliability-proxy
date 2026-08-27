@@ -1,6 +1,7 @@
 package faults
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"net"
@@ -11,16 +12,19 @@ import (
 
 var ErrHijackingUnsupported = errors.New("connection reset simulation requires HTTP/1.x hijacking")
 
-// applyReset returns whether the request was handled and whether the reset was
-// actually delivered. The two differ when hijacking is unavailable: the request
-// stops, but no reset reached the client, so counting one would be a lie.
-func (e *Engine) applyReset(rule rules.Rule, w http.ResponseWriter, r *http.Request) (stop, faulted bool, err error) {
+// applyReset reports whether the request was handled and whether a reset
+// actually reached the client; hijacking failures make the two differ.
+func (e *Engine) applyReset(ctx context.Context, rule rules.Rule, w http.ResponseWriter, r *http.Request) (stop, faulted bool, err error) {
 	probability := 1.0
 	if rule.Effects.Reset.Probability != nil {
 		probability = *rule.Effects.Reset.Probability
 	}
-	if !e.shouldFail(probability) {
+	if !e.shouldTrigger(probability) {
 		return false, false, nil
+	}
+	// A client that already left cannot observe a reset.
+	if err := ctx.Err(); err != nil {
+		return true, false, err
 	}
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
@@ -30,10 +34,8 @@ func (e *Engine) applyReset(rule rules.Rule, w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		return true, false, err
 	}
-	// The hijack succeeded, so the connection is ours and the ResponseWriter is
-	// spent. Reporting a Close failure upwards would make the error handler try
-	// to write a 500 onto a hijacked connection, which net/http rejects while
-	// logging noise. Nothing useful can reach the client at this point.
+	// The connection is ours now, so Close failures are logged, not returned:
+	// the error handler would write onto a hijacked ResponseWriter.
 	forceReset(conn)
 	if err := conn.Close(); err != nil {
 		e.logger.Warn("closing hijacked connection",
@@ -44,14 +46,12 @@ func (e *Engine) applyReset(rule rules.Rule, w http.ResponseWriter, r *http.Requ
 		)
 	}
 	e.logFault(rule, r, "reset")
-	e.recordFault()
+	e.metrics.RecordFault()
 	return true, true, nil
 }
 
-// forceReset makes the following Close send a TCP RST instead of a graceful
-// FIN. Without it the client observes EOF, which is a different failure than
-// the connection reset this effect is named after: net/http silently retries
-// an idempotent request that dies with EOF on a reused connection.
+// forceReset makes the following Close emit a TCP RST instead of a graceful
+// FIN, which the client would see as EOF rather than a connection reset.
 func forceReset(conn net.Conn) {
 	for {
 		switch c := conn.(type) {

@@ -1,4 +1,4 @@
-.PHONY: test race lint fmt build run docker
+.PHONY: test race vet lint fmt build run docker
 
 test:
 	go test ./...
@@ -6,8 +6,13 @@ test:
 race:
 	go test -race ./...
 
-lint:
+vet:
 	go vet ./...
+
+# Requires golangci-lint:
+#   go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+lint:
+	golangci-lint run ./...
 
 fmt:
 	gofmt -w .

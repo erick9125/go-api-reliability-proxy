@@ -41,8 +41,7 @@ func TestConnectionReset(t *testing.T) {
 		t.Fatal("expected connection error from reset simulation")
 	}
 
-	// A graceful close surfaces as EOF, which is a different fault than the one
-	// this effect claims to inject. Assert the real thing.
+	// A graceful close would surface as EOF, a different fault entirely.
 	if !isConnectionReset(err) {
 		t.Fatalf("expected a connection reset, got %v", err)
 	}

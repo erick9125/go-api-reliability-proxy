@@ -6,15 +6,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// HeaderValues holds every value configured for one response header. YAML
-// accepts either a scalar or a list, so `Retry-After: "10"` keeps working while
-// headers that legitimately repeat, such as Set-Cookie, become expressible:
-//
-//	headers:
-//	  Retry-After: "10"
-//	  Set-Cookie:
-//	    - "a=1"
-//	    - "b=2"
+// HeaderValues holds every value for one response header. YAML accepts a
+// scalar or a list, so single-valued headers keep their plain form.
 type HeaderValues []string
 
 func (h *HeaderValues) UnmarshalYAML(value *yaml.Node) error {
@@ -36,13 +29,6 @@ func (h *HeaderValues) UnmarshalYAML(value *yaml.Node) error {
 	default:
 		return fmt.Errorf("header value must be a string or a list of strings")
 	}
-}
-
-func (h HeaderValues) MarshalYAML() (any, error) {
-	if len(h) == 1 {
-		return h[0], nil
-	}
-	return []string(h), nil
 }
 
 func (h HeaderValues) clone() HeaderValues {

@@ -22,14 +22,12 @@ func (m *Metrics) RecordMatch() {
 	m.matched.Add(1)
 }
 
-// RecordFault counts one effect taking hold. A single request can raise it more
-// than once, because a rule may combine effects such as latency and failure.
+// RecordFault counts one effect taking hold; a request can raise it more than once.
 func (m *Metrics) RecordFault() {
 	m.faultsInjected.Add(1)
 }
 
-// RecordRequestFaulted counts one request that experienced at least one effect,
-// no matter how many ran. This is the counter to compare against Requests.
+// RecordRequestFaulted counts one request that experienced at least one effect.
 func (m *Metrics) RecordRequestFaulted() {
 	m.requestsFaulted.Add(1)
 }

@@ -54,7 +54,7 @@ func TestFailureProbabilityWithFixedRandom(t *testing.T) {
 				Status:      http.StatusServiceUnavailable,
 			},
 		},
-	}}, proxy.Options{Random: faults.FixedRandom{Value: 0.10}})
+	}}, proxy.Options{Faults: faults.Options{Random: faults.FixedRandom{Value: 0.10}}})
 
 	resp, err := http.Get(p.URL + "/inventory/1")
 	if err != nil {
@@ -69,8 +69,7 @@ func TestFailureProbabilityWithFixedRandom(t *testing.T) {
 	}
 }
 
-// A header configured with several values must arrive as several values, not
-// as one joined string.
+// Several values must arrive as several headers, not one joined string.
 func TestSyntheticResponseSendsRepeatedHeaders(t *testing.T) {
 	upstream := newUpstream(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("upstream should not be called")

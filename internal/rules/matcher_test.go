@@ -79,8 +79,7 @@ func TestMatcherNormalizesRequestMethod(t *testing.T) {
 	}
 }
 
-// The matcher must own its rules: mutating the caller's slice afterwards, or
-// the value it hands back, must not change what later requests match.
+// Mutating the caller's slice must not change what later requests match.
 func TestMatcherOwnsItsRules(t *testing.T) {
 	probability := 0.5
 	source := []Rule{{
@@ -120,9 +119,8 @@ func TestMatcherOwnsItsRules(t *testing.T) {
 		t.Errorf("header = %q, want %q", v, "yes")
 	}
 
-	// Assigning to the returned value must not reach the matcher. Effects
-	// pointers are documented as shared and read-only, so they are not covered
-	// by this guarantee.
+	// Assigning to the returned value must not reach the matcher; Effects
+	// pointers are documented as shared, so they are outside this guarantee.
 	got.Name = "local edit"
 	again, _ := matcher.Match(req)
 	if again.Name != "flaky" {

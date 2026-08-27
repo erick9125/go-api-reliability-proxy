@@ -11,12 +11,9 @@ import (
 )
 
 type Result struct {
-	// Stop reports whether the effect already answered the client, so the
-	// request must not be forwarded upstream.
+	// Stop reports that the effect already answered the client.
 	Stop bool
-	// Faulted reports whether at least one effect actually ran. It stays false
-	// when a probabilistic effect declined to fire, or when an effect was cut
-	// short before taking hold.
+	// Faulted reports that at least one effect actually ran.
 	Faulted bool
 }
 
@@ -44,8 +41,7 @@ func New(opts Options) *Engine {
 	if random == nil {
 		random = NewLockedRandom(opts.Seed)
 	} else if opts.Seed != nil {
-		// Both were set, and Random wins. Saying so beats letting the seed look
-		// like it took effect.
+		// Random wins; say so instead of letting the seed look effective.
 		logger.Warn("ignoring seed because an explicit random source was provided")
 	}
 	sleeper := opts.Sleeper
@@ -83,7 +79,7 @@ func (e *Engine) Apply(ctx context.Context, rule rules.Rule, w http.ResponseWrit
 		return Result{Stop: true, Faulted: faulted}, nil
 	}
 	if rule.Effects.Reset != nil {
-		stop, applied, err := e.applyReset(rule, w, r)
+		stop, applied, err := e.applyReset(ctx, rule, w, r)
 		faulted = faulted || applied
 		if err != nil {
 			return Result{Stop: true, Faulted: faulted}, err
@@ -93,7 +89,7 @@ func (e *Engine) Apply(ctx context.Context, rule rules.Rule, w http.ResponseWrit
 		}
 	}
 	if rule.Effects.Failure != nil {
-		if e.shouldFail(*rule.Effects.Failure.Probability) {
+		if e.shouldTrigger(*rule.Effects.Failure.Probability) {
 			e.applyFailure(rule, w, r)
 			return Result{Stop: true, Faulted: true}, nil
 		}
@@ -105,7 +101,9 @@ func (e *Engine) Apply(ctx context.Context, rule rules.Rule, w http.ResponseWrit
 	return Result{Stop: false, Faulted: faulted}, nil
 }
 
-func (e *Engine) shouldFail(probability float64) bool {
+// shouldTrigger draws for a probabilistic effect. Float64 is [0,1), so a
+// probability of 0 never fires and 1 always does.
+func (e *Engine) shouldTrigger(probability float64) bool {
 	return e.random.Float64() < probability
 }
 
@@ -118,19 +116,16 @@ func (e *Engine) logFault(rule rules.Rule, r *http.Request, effect string) {
 	)
 }
 
-func (e *Engine) recordFault() {
-	e.metrics.RecordFault()
-}
-
+// latencyDuration picks the delay for one request; the upper bound is exclusive.
 func latencyDuration(cfg *rules.LatencyConfig, random Random) time.Duration {
 	if cfg.Fixed != nil {
 		return cfg.Fixed.Duration
 	}
-	min := cfg.Min.Duration
-	max := cfg.Max.Duration
-	if max <= min {
-		return min
+	lo := cfg.Min.Duration
+	hi := cfg.Max.Duration
+	if hi <= lo {
+		return lo
 	}
-	span := max - min
-	return min + time.Duration(float64(span)*random.Float64())
+	span := hi - lo
+	return lo + time.Duration(float64(span)*random.Float64())
 }

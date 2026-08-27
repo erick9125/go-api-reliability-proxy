@@ -12,9 +12,8 @@ import (
 
 const internalPrefix = "/__reliability"
 
-// isInternalPath reserves the /__reliability/* namespace and nothing else. A
-// plain prefix test also swallowed upstream paths such as /__reliabilityX,
-// which the README and SECURITY.md promise are forwarded.
+// isInternalPath reserves /__reliability and /__reliability/*, but not every
+// path that merely starts with those characters.
 func isInternalPath(path string) bool {
 	return path == internalPrefix || strings.HasPrefix(path, internalPrefix+"/")
 }

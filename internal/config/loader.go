@@ -10,13 +10,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Load builds the configuration the proxy runs with. An empty path yields the
-// defaults, so --target alone is a valid invocation.
-//
-// Normalizing and validating happen here on purpose: matching relies on rules
-// being normalized (methods are compared uppercased), and Validate expects a
-// normalized Config. Leaving those steps to the caller made a half-built Config
-// representable, and the natural Load + proxy.New path silently skipped them.
+// Load decodes, applies overrides, normalizes and validates in one step, so a
+// half-built Config is never handed out. An empty path yields the defaults.
 func Load(path string, o Overrides) (Config, error) {
 	cfg := Default()
 	if path != "" {
@@ -40,7 +35,7 @@ func decodeFile(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("open configuration file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var cfg Config
 	decoder := yaml.NewDecoder(file)
@@ -67,9 +62,8 @@ func (c *Config) Normalize() {
 	for i := range c.Rules {
 		c.Rules[i].Name = strings.TrimSpace(c.Rules[i].Name)
 		c.Rules[i].Match.Path = strings.TrimSpace(c.Rules[i].Match.Path)
-		// Blank entries are kept so Validate can reject them. Dropping them left
-		// an empty list, which the matcher reads as "every method" — the exact
-		// opposite of the restriction the author was trying to express.
+		// Blank entries are kept so Validate rejects them; dropping them left an
+		// empty list, which the matcher reads as "every method".
 		methods := make([]string, 0, len(c.Rules[i].Match.Methods))
 		for _, method := range c.Rules[i].Match.Methods {
 			methods = append(methods, strings.ToUpper(strings.TrimSpace(method)))

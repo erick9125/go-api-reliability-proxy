@@ -24,8 +24,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # v6 only supports golangci-lint v1; v2 needs v7 or newer.
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.13.1
 
